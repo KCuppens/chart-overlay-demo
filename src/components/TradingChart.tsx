@@ -87,7 +87,6 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
     // Set initial visible range to show real data with padding for future expansion
     if (realDataGenerated.candleData.length > 0 && fakeDataGenerated.candleData.length > 0) {
       const firstTime = realDataGenerated.candleData[0].time;
-      const lastRealTime = realDataGenerated.candleData[realDataGenerated.candleData.length - 1].time;
       const lastFakeTime = fakeDataGenerated.candleData[fakeDataGenerated.candleData.length - 1].time;
 
       // Add padding to the right (about 5 days worth)

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import TradingChart from './components/TradingChart';
 import ChatBubble from './components/ChatBubble';
 
