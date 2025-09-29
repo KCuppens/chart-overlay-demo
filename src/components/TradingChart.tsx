@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createChart, IChartApi, ISeriesApi, CandlestickData } from 'lightweight-charts';
-import { CandleData, VolumeData, generateDownwardTrendingData, generateUpwardTrendingData } from '../utils/dataGenerator';
+import { CandleData } from '../utils/dataGenerator';
 
 interface TradingChartProps {
   onChartReady?: (chart: IChartApi) => void;
@@ -11,12 +11,10 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi>();
   const candleSeries = useRef<ISeriesApi<'Candlestick'>>();
-  const updateIntervalRef = useRef<NodeJS.Timeout>();
+  const updateIntervalRef = useRef<number>();
   const currentDataRef = useRef<CandleData[]>([]);
 
   const [isOverlayActive, setIsOverlayActive] = useState(false);
-  const [realData, setRealData] = useState<{ candleData: CandleData[]; volumeData: VolumeData[] }>();
-  const [fakeData, setFakeData] = useState<{ candleData: CandleData[]; volumeData: VolumeData[] }>();
   const [currentPrice, setCurrentPrice] = useState<number>(52000);
 
   useEffect(() => {
@@ -174,8 +172,7 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
     let sessionMomentum = 0; // Track session momentum
 
     // Start real-time updates (every 100ms for smooth animation)
-    updateIntervalRef.current = setInterval(() => {
-      const now = Math.floor(Date.now() / 1000);
+    updateIntervalRef.current = window.setInterval(() => {
       const lastCompleteCandle = currentDataRef.current[currentDataRef.current.length - 1];
 
       if (!lastCompleteCandle) return;
@@ -205,13 +202,9 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
         // Complete the in-progress candle if exists
         if (inProgressCandle) {
           // Finalize candle with realistic OHLC
-          const candleOpen = inProgressCandle.open;
-          const candleClose = inProgressCandle.close;
-
           // Final wick adjustment based on trend and candle type
           const isRedCandle = inProgressCandle.close < inProgressCandle.open;
           const bodySize = Math.abs(inProgressCandle.close - inProgressCandle.open);
-          const wickMultiplier = Math.min(1.5, bodySize / 10); // Scale wicks with body size
 
           // Final proportional wicks (no excessive wicks)
           const maxWick = bodySize * 0.5; // Max wick is 50% of body
@@ -243,7 +236,9 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
               low: d.low,
               close: d.close,
             }));
-            candleSeries.current.setData(candleDataFormatted);
+            if (candleSeries.current) {
+              candleSeries.current.setData(candleDataFormatted);
+            }
           }
         }
 
@@ -319,13 +314,15 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
         tickCount = 0;
 
         // Add the new candle to the chart
-        candleSeries.current.update({
-          time: inProgressCandle.time as any,
-          open: inProgressCandle.open,
-          high: inProgressCandle.high,
-          low: inProgressCandle.low,
-          close: inProgressCandle.close
-        });
+        if (candleSeries.current) {
+          candleSeries.current.update({
+            time: inProgressCandle.time as any,
+            open: inProgressCandle.open,
+            high: inProgressCandle.high,
+            low: inProgressCandle.low,
+            close: inProgressCandle.close
+          });
+        }
       } else if (inProgressCandle) {
         // Update the current in-progress candle with realistic movements
         const priceMovement = tick + microTrend * 0.1;
@@ -349,13 +346,15 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
         }
 
         // Update chart with modified candle
-        candleSeries.current.update({
-          time: inProgressCandle.time as any,
-          open: inProgressCandle.open,
-          high: parseFloat(inProgressCandle.high.toFixed(2)),
-          low: parseFloat(inProgressCandle.low.toFixed(2)),
-          close: inProgressCandle.close
-        });
+        if (candleSeries.current) {
+          candleSeries.current.update({
+            time: inProgressCandle.time as any,
+            open: inProgressCandle.open,
+            high: parseFloat(inProgressCandle.high.toFixed(2)),
+            low: parseFloat(inProgressCandle.low.toFixed(2)),
+            close: inProgressCandle.close
+          });
+        }
       }
 
       setCurrentPrice(parseFloat(newPrice.toFixed(2)));
