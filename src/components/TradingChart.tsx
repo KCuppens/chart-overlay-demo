@@ -10,12 +10,15 @@ interface TradingChartProps {
 const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActivate }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi>();
-  const candleSeries = useRef<ISeriesApi<'Candlestick'>>();
+  const realitySeries = useRef<ISeriesApi<'Candlestick'>>();
+  const dreamSeries = useRef<ISeriesApi<'Candlestick'>>();
   const updateIntervalRef = useRef<number>();
-  const currentDataRef = useRef<CandleData[]>([]);
+  const realityDataRef = useRef<CandleData[]>([]);
+  const dreamDataRef = useRef<CandleData[]>([]);
 
   const [isOverlayActive, setIsOverlayActive] = useState(false);
   const [currentPrice, setCurrentPrice] = useState<number>(52000);
+  const [dreamPrice, setDreamPrice] = useState<number>(52000);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -48,8 +51,8 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
       },
     });
 
-    // Create candlestick series
-    const candleSeriesInstance = chartInstance.addCandlestickSeries({
+    // Create reality series (standard colors: green up, red down)
+    const realitySeriesInstance = chartInstance.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
       borderVisible: false,
@@ -57,46 +60,64 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
       wickDownColor: '#ef5350',
     });
 
-    // Volume series removed per request
+    // Create dream series (same standard colors) - initially hidden
+    const dreamSeriesInstance = chartInstance.addCandlestickSeries({
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+      visible: false, // Initially hidden
+    });
 
     chart.current = chartInstance;
-    candleSeries.current = candleSeriesInstance;
+    realitySeries.current = realitySeriesInstance;
+    dreamSeries.current = dreamSeriesInstance;
 
-    // Generate initial historical data (50 candles with realistic movements)
+    // Generate initial historical data for reality (bearish trend)
     const now = Math.floor(Date.now() / 1000);
     const historicalData: CandleData[] = [];
-    let price = 52500; // Start near entry price
-    let momentum = 0; // Track short-term momentum
+    const dreamHistoricalData: CandleData[] = [];
+    let price = 52500;
+    let dreamStartPrice = 52500;
 
-    // Create 50 historical candles (2-second intervals) with realistic movements
+    // Create 50 historical candles (2-second intervals) with bearish trend
     for (let i = 49; i >= 0; i--) {
       const time = now - (i * 2); // 2-second candles
 
-      // Realistic market movement with varied candle sizes
-      const isGreenCandle = Math.random() > 0.7; // Bearish bias (30% green, 70% red)
-
-      // More varied candle sizes - occasional big moves
-      const rand = Math.random();
+      // Reality - mixed candles with bearish trend
+      const isGreenCandle = Math.random() > 0.5; // 50/50 green and red
+      const volatility = Math.random();
       let candleSize;
-      if (rand > 0.9) {
-        candleSize = 25 + Math.random() * 25; // 10% chance of big move (25-50 points)
-      } else if (rand > 0.7) {
-        candleSize = 15 + Math.random() * 15; // 20% chance of medium move (15-30 points)
-      } else {
-        candleSize = 3 + Math.random() * 12; // 70% chance of normal move (3-15 points)
-      }
 
-      // Add momentum to make movements more realistic
-      momentum = momentum * 0.7 + (Math.random() - 0.6) * 3; // Bearish bias
+      // More aggressive candle sizes
+      if (volatility > 0.92) candleSize = 15 + Math.random() * 20;  // 8% large moves (15-35 points)
+      else if (volatility > 0.75) candleSize = 8 + Math.random() * 10; // 17% medium moves (8-18 points)
+      else if (volatility > 0.3) candleSize = 3 + Math.random() * 7; // 45% normal moves (3-10 points)
+      else candleSize = 1 + Math.random() * 3; // 30% small moves
+
+      const bodyChange = (isGreenCandle ? 1 : -1) * candleSize;
+
+      // Bearish bias applied to the trend, not individual candles
+      const trendBias = -1.5; // Stronger bearish bias
 
       const open = price;
-      const bodyChange = (isGreenCandle ? 1 : -1) * candleSize + momentum;
-      const close = open + bodyChange;
+      const close = open + bodyChange + trendBias;
 
-      // Realistic wicks - proportional to candle body
-      const wickSize = candleSize * 0.3; // Wicks are 30% of body size
-      const upperWick = (isGreenCandle ? wickSize * 0.3 : wickSize * 0.7) + Math.random() * 3;
-      const lowerWick = (isGreenCandle ? wickSize * 0.7 : wickSize * 0.3) + Math.random() * 3;
+      // Proper wicks for all candles
+      const wickRatio = 0.3 + Math.random() * 0.4; // 30-70% of body
+
+      // All candles have both upper and lower wicks
+      let upperWick, lowerWick;
+      if (isGreenCandle) {
+        // Green candles: bigger lower wick (tested lower but bounced)
+        upperWick = candleSize * wickRatio * 0.3 + Math.random() * 2;
+        lowerWick = candleSize * wickRatio * 0.7 + Math.random() * 3;
+      } else {
+        // Red candles: bigger upper wick (tested higher but rejected)
+        upperWick = candleSize * wickRatio * 0.7 + Math.random() * 3;
+        lowerWick = candleSize * wickRatio * 0.3 + Math.random() * 2;
+      }
 
       const high = Math.max(open, close) + upperWick;
       const low = Math.min(open, close) - lowerWick;
@@ -109,26 +130,35 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
         close: parseFloat(close.toFixed(2))
       });
 
-      // Next candle opens at this candle's close
+      // Dream data (same as reality initially, will diverge when activated)
+      dreamHistoricalData.push({
+        time,
+        open: parseFloat(open.toFixed(2)),
+        high: parseFloat(high.toFixed(2)),
+        low: parseFloat(low.toFixed(2)),
+        close: parseFloat(close.toFixed(2))
+      });
+
       price = close;
+      dreamStartPrice = close;
     }
 
-    currentDataRef.current = historicalData;
+    realityDataRef.current = historicalData;
+    dreamDataRef.current = dreamHistoricalData;
     setCurrentPrice(price);
+    setDreamPrice(dreamStartPrice);
 
-    // Convert and set initial data
-    const candleDataFormatted: CandlestickData[] = historicalData.map(d => ({
+    // Set initial data for reality series
+    const realityFormatted: CandlestickData[] = historicalData.map(d => ({
       time: d.time as any,
       open: d.open,
       high: d.high,
       low: d.low,
       close: d.close,
     }));
+    realitySeriesInstance.setData(realityFormatted);
 
-    candleSeriesInstance.setData(candleDataFormatted);
-
-
-    // Auto-fit content initially
+    // Auto-fit content
     chartInstance.timeScale().fitContent();
 
     if (onChartReady) {
@@ -154,210 +184,289 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
       }
       chartInstance.remove();
     };
-  }, []); // Remove onChartReady dependency to prevent re-renders
+  }, []);
 
   // Real-time update effect
   useEffect(() => {
-    if (!candleSeries.current || !chart.current) return;
+    if (!realitySeries.current || !dreamSeries.current || !chart.current) return;
 
     // Clear any existing interval
     if (updateIntervalRef.current) {
       clearInterval(updateIntervalRef.current);
     }
 
-    let lastCandleTime = currentDataRef.current[currentDataRef.current.length - 1]?.time || Math.floor(Date.now() / 1000);
-    let inProgressCandle: CandleData | null = null;
+    let lastCandleTime = realityDataRef.current[realityDataRef.current.length - 1]?.time || Math.floor(Date.now() / 1000);
+    let realityInProgress: CandleData | null = null;
+    let dreamInProgress: CandleData | null = null;
     let tickCount = 0;
-    let microTrend = 0; // Track micro movements within candle
-    let sessionMomentum = 0; // Track session momentum
+    let realityMicroTrend = 0;
+    let dreamMicroTrend = 0;
+    let realityMomentum = 0;
+    let dreamMomentum = 0;
 
-    // Start real-time updates (every 100ms for smooth animation)
+    // Start real-time updates
     updateIntervalRef.current = window.setInterval(() => {
-      const lastCompleteCandle = currentDataRef.current[currentDataRef.current.length - 1];
+      const lastRealityCandle = realityDataRef.current[realityDataRef.current.length - 1];
+      const lastDreamCandle = dreamDataRef.current[dreamDataRef.current.length - 1];
 
-      if (!lastCompleteCandle) return;
+      if (!lastRealityCandle) return;
 
-      // Realistic price movement calculation
-      const basePrice = inProgressCandle ? inProgressCandle.close : lastCompleteCandle.close;
+      // REALITY SERIES (Aggressive bearish with mixed candles)
+      const realityBasePrice = realityInProgress ? realityInProgress.close : lastRealityCandle.close;
 
-      // Market microstructure: small random moves
-      const tick = (Math.random() - 0.5) * 2; // -1 to +1 point moves
+      // Larger tick movements for more aggressive action
+      const spread = 1 + Math.random() * 3; // 1-4 point spread
+      const realityTick = (Math.random() - 0.5) * spread;
 
-      // Add stronger bias based on overlay state - more aggressive in dream mode
-      const bias = isOverlayActive ? 1.2 : -0.5; // Much stronger upward bias in dream mode
+      // Stronger bearish bias for aggressive downtrend
+      const realityBias = -0.3; // Stronger bearish bias
+      realityMomentum = realityMomentum * 0.95 + realityBias;
+      realityMicroTrend = realityMicroTrend * 0.85 + (Math.random() - 0.55) * 3; // Bearish micro trend
 
-      // Session momentum (builds up slowly)
-      sessionMomentum = sessionMomentum * 0.95 + bias;
+      const realityNewPrice = realityBasePrice + realityTick + realityMicroTrend * 0.15 + realityMomentum;
 
-      // Micro trend within candle (more volatile)
-      microTrend = microTrend * 0.8 + (Math.random() - 0.5) * 3;
+      // DREAM SERIES (Aggressive bullish with mixed candles)
+      let dreamNewPrice = realityNewPrice; // Default to reality price
+      if (isOverlayActive && lastDreamCandle) {
+        const dreamBasePrice = dreamInProgress ? dreamInProgress.close : lastDreamCandle.close;
 
-      // Combine all factors for realistic movement
-      const newPrice = basePrice + tick + microTrend * 0.1 + sessionMomentum * 0.5;
+        // Larger movements for aggressive action
+        const dreamSpread = 1 + Math.random() * 3;
+        const dreamTick = (Math.random() - 0.5) * dreamSpread;
+
+        // Strong bullish bias from the start
+        const dreamBias = 0.4; // Strong bullish bias
+
+        dreamMomentum = dreamMomentum * 0.95 + dreamBias;
+        dreamMicroTrend = dreamMicroTrend * 0.85 + (Math.random() - 0.45) * 3; // Bullish micro trend
+
+        // Less correlation for stronger divergence
+        const correlation = Math.random() > 0.7 ? 0.2 : 0; // Only 30% partially correlated
+        const realityInfluence = (realityNewPrice - realityBasePrice) * correlation;
+
+        dreamNewPrice = dreamBasePrice + dreamTick + dreamMicroTrend * 0.15 + dreamMomentum + realityInfluence;
+      }
 
       tickCount++;
 
-      // Create new candle every 20 ticks (2 seconds at 100ms intervals)
+      // Create new candles every 20 ticks (2 seconds)
       if (tickCount >= 20) {
-        // Complete the in-progress candle if exists
-        if (inProgressCandle) {
-          // Finalize candle with realistic OHLC
-          // Final wick adjustment based on trend and candle type
-          const isRedCandle = inProgressCandle.close < inProgressCandle.open;
-          const bodySize = Math.abs(inProgressCandle.close - inProgressCandle.open);
-
-          // Final proportional wicks (no excessive wicks)
-          const maxWick = bodySize * 0.5; // Max wick is 50% of body
+        // Complete in-progress candles
+        if (realityInProgress) {
+          const isRedCandle = realityInProgress.close < realityInProgress.open;
+          const bodySize = Math.abs(realityInProgress.close - realityInProgress.open);
+          const maxWick = bodySize * 0.5;
 
           if (isRedCandle) {
-            // Red candles: upper wick dominant
-            const upperWickAdd = Math.min(maxWick * 0.7, 3 + Math.random() * 5);
-            const lowerWickAdd = Math.min(maxWick * 0.3, 1 + Math.random() * 2);
-            inProgressCandle.high = Math.max(inProgressCandle.high, Math.max(inProgressCandle.open, inProgressCandle.close) + upperWickAdd);
-            inProgressCandle.low = Math.min(inProgressCandle.low, Math.min(inProgressCandle.open, inProgressCandle.close) - lowerWickAdd);
+            // Red candles: test higher (upper wick) but fail
+            const upperWick = Math.min(maxWick * 0.6, 2 + Math.random() * 3);
+            const lowerWick = Math.min(maxWick * 0.3, 0.5 + Math.random() * 1);
+            realityInProgress.high = Math.max(realityInProgress.high, Math.max(realityInProgress.open, realityInProgress.close) + upperWick);
+            realityInProgress.low = Math.min(realityInProgress.low, Math.min(realityInProgress.open, realityInProgress.close) - lowerWick);
           } else {
-            // Green candles: lower wick dominant
-            const upperWickAdd = Math.min(maxWick * 0.3, 1 + Math.random() * 2);
-            const lowerWickAdd = Math.min(maxWick * 0.7, 3 + Math.random() * 5);
-            inProgressCandle.high = Math.max(inProgressCandle.high, Math.max(inProgressCandle.open, inProgressCandle.close) + upperWickAdd);
-            inProgressCandle.low = Math.min(inProgressCandle.low, Math.min(inProgressCandle.open, inProgressCandle.close) - lowerWickAdd);
+            // Green candles: test lower (lower wick) but bounce
+            const upperWick = Math.min(maxWick * 0.3, 0.5 + Math.random() * 1);
+            const lowerWick = Math.min(maxWick * 0.6, 2 + Math.random() * 3);
+            realityInProgress.high = Math.max(realityInProgress.high, Math.max(realityInProgress.open, realityInProgress.close) + upperWick);
+            realityInProgress.low = Math.min(realityInProgress.low, Math.min(realityInProgress.open, realityInProgress.close) - lowerWick);
           }
 
-          currentDataRef.current.push(inProgressCandle);
+          realityDataRef.current.push(realityInProgress);
 
-          // Keep only last 100 candles for performance
-          if (currentDataRef.current.length > 100) {
-            currentDataRef.current.shift();
-            // Re-set all data to maintain continuity
-            const candleDataFormatted: CandlestickData[] = currentDataRef.current.map(d => ({
+          if (realityDataRef.current.length > 100) {
+            realityDataRef.current.shift();
+            const formatted: CandlestickData[] = realityDataRef.current.map(d => ({
               time: d.time as any,
               open: d.open,
               high: d.high,
               low: d.low,
               close: d.close,
             }));
-            if (candleSeries.current) {
-              candleSeries.current.setData(candleDataFormatted);
+            if (realitySeries.current) {
+              realitySeries.current.setData(formatted);
             }
           }
         }
 
-        // Reset micro trend for new candle
-        microTrend = (Math.random() - 0.5) * 2;
+        if (dreamInProgress && isOverlayActive) {
+          const isGreenCandle = dreamInProgress.close > dreamInProgress.open;
+          const bodySize = Math.abs(dreamInProgress.close - dreamInProgress.open);
+          const maxWick = bodySize * 0.5;
 
-        // Start new candle
-        lastCandleTime = lastCandleTime + 2; // 2-second candles
-
-        // Determine if new candle will be green or red
-        const isGreen = Math.random() > (isOverlayActive ? 0.2 : 0.7); // Dream mode 80% green, normal 30% green
-
-        // Varied candle body sizes - more aggressive in dream mode
-        const rand = Math.random();
-        let candleBodySize;
-
-        if (isOverlayActive) {
-          // Dream mode - more aggressive bullish moves
-          if (rand > 0.85) {
-            // 15% chance of very aggressive move
-            candleBodySize = isGreen ? 30 + Math.random() * 40 : 5 + Math.random() * 10; // Big green, small red
-          } else if (rand > 0.6) {
-            // 25% chance of strong move
-            candleBodySize = isGreen ? 15 + Math.random() * 20 : 3 + Math.random() * 8;
+          if (isGreenCandle) {
+            // Green candles: strong buying, test lower but bounce
+            const upperWick = Math.min(maxWick * 0.3, 0.5 + Math.random() * 1.5);
+            const lowerWick = Math.min(maxWick * 0.6, 2 + Math.random() * 3);
+            dreamInProgress.high = Math.max(dreamInProgress.high, Math.max(dreamInProgress.open, dreamInProgress.close) + upperWick);
+            dreamInProgress.low = Math.min(dreamInProgress.low, Math.min(dreamInProgress.open, dreamInProgress.close) - lowerWick);
           } else {
-            // 60% normal moves
-            candleBodySize = isGreen ? 8 + Math.random() * 12 : 2 + Math.random() * 6;
+            // Red candles: profit taking, test higher but fail
+            const upperWick = Math.min(maxWick * 0.6, 2 + Math.random() * 3);
+            const lowerWick = Math.min(maxWick * 0.3, 0.5 + Math.random() * 1.5);
+            dreamInProgress.high = Math.max(dreamInProgress.high, Math.max(dreamInProgress.open, dreamInProgress.close) + upperWick);
+            dreamInProgress.low = Math.min(dreamInProgress.low, Math.min(dreamInProgress.open, dreamInProgress.close) - lowerWick);
           }
-        } else {
-          // Normal mode - bearish moves
-          if (rand > 0.9) {
-            // 10% chance of aggressive move
-            candleBodySize = !isGreen ? 20 + Math.random() * 30 : 3 + Math.random() * 7; // Big red, small green
-          } else if (rand > 0.7) {
-            // 20% chance of medium move
-            candleBodySize = !isGreen ? 10 + Math.random() * 15 : 2 + Math.random() * 6;
-          } else {
-            // 70% normal moves
-            candleBodySize = !isGreen ? 5 + Math.random() * 10 : 1 + Math.random() * 5;
+
+          dreamDataRef.current.push(dreamInProgress);
+
+          if (dreamDataRef.current.length > 100) {
+            dreamDataRef.current.shift();
+            const formatted: CandlestickData[] = dreamDataRef.current.map(d => ({
+              time: d.time as any,
+              open: d.open,
+              high: d.high,
+              low: d.low,
+              close: d.close,
+            }));
+            if (dreamSeries.current) {
+              dreamSeries.current.setData(formatted);
+            }
           }
         }
 
-        // New candle MUST open at previous candle's close price for continuity
-        const prevClose = inProgressCandle ? inProgressCandle.close : lastCompleteCandle.close;
-        const openPrice = parseFloat((prevClose).toFixed(2));
-        const closePrice = parseFloat((openPrice + (isGreen ? candleBodySize : -candleBodySize)).toFixed(2));
+        // Start new candles
+        lastCandleTime = lastCandleTime + 2;
 
-        // Add initial wicks based on candle type and trend direction
-        const isRedCandle = closePrice < openPrice;
-        let initialUpperWick, initialLowerWick;
+        // Reality candle - 50/50 mix but downtrend overall
+        const realityIsGreen = Math.random() > 0.5; // Exactly 50/50 green/red
+        const realityRand = Math.random();
+        let realityCandleBodySize;
 
-        // Proportional wicks based on body size (30-50% of body)
-        const wickProportion = 0.3 + Math.random() * 0.2; // 30-50% of body
-
-        if (isRedCandle) {
-          // Red candles have upper wicks (tested higher, rejected)
-          initialUpperWick = candleBodySize * wickProportion * 0.8;
-          initialLowerWick = candleBodySize * wickProportion * 0.2;
+        // Aggressive size distribution
+        if (realityRand > 0.93) {
+          // 7% large aggressive moves
+          realityCandleBodySize = 20 + Math.random() * 30; // 20-50 points
+        } else if (realityRand > 0.78) {
+          // 15% strong moves
+          realityCandleBodySize = 10 + Math.random() * 15; // 10-25 points
+        } else if (realityRand > 0.35) {
+          // 43% normal moves
+          realityCandleBodySize = 4 + Math.random() * 8; // 4-12 points
         } else {
-          // Green candles have lower wicks (tested lower, bounced)
-          initialUpperWick = candleBodySize * wickProportion * 0.2;
-          initialLowerWick = candleBodySize * wickProportion * 0.8;
+          // 35% small moves
+          realityCandleBodySize = 1 + Math.random() * 4; // 1-5 points
         }
 
-        inProgressCandle = {
+        const realityPrevClose = realityInProgress ? realityInProgress.close : lastRealityCandle.close;
+        const realityOpenPrice = parseFloat(realityPrevClose.toFixed(2));
+        const realityClosePrice = parseFloat((realityOpenPrice + (realityIsGreen ? realityCandleBodySize : -realityCandleBodySize)).toFixed(2));
+
+        // Add initial wicks to reality candle
+        const realityWickSize = Math.abs(realityClosePrice - realityOpenPrice) * 0.4;
+        const realityUpperWick = realityIsGreen ? realityWickSize * 0.3 : realityWickSize * 0.7;
+        const realityLowerWick = realityIsGreen ? realityWickSize * 0.7 : realityWickSize * 0.3;
+
+        realityInProgress = {
           time: lastCandleTime,
-          open: openPrice,
-          high: Math.max(openPrice, closePrice) + initialUpperWick,
-          low: Math.min(openPrice, closePrice) - initialLowerWick,
-          close: closePrice
+          open: realityOpenPrice,
+          high: Math.max(realityOpenPrice, realityClosePrice) + realityUpperWick,
+          low: Math.min(realityOpenPrice, realityClosePrice) - realityLowerWick,
+          close: realityClosePrice
         };
 
+        // Dream candle - 50/50 mix but uptrend overall
+        if (isOverlayActive) {
+          const dreamIsGreen = Math.random() > 0.5; // Also 50/50 green/red
+
+          const dreamRand = Math.random();
+          let dreamCandleBodySize;
+
+          // Aggressive size distribution (same as reality)
+          if (dreamRand > 0.92) {
+            // 8% large aggressive moves
+            dreamCandleBodySize = 15 + Math.random() * 30; // 15-45 points for upside
+          } else if (dreamRand > 0.76) {
+            // 16% strong moves
+            dreamCandleBodySize = 10 + Math.random() * 18; // 10-28 points
+          } else if (dreamRand > 0.32) {
+            // 44% normal moves
+            dreamCandleBodySize = 4 + Math.random() * 10; // 4-14 points
+          } else {
+            // 32% small moves
+            dreamCandleBodySize = 1 + Math.random() * 5; // 1-6 points
+          }
+
+          const dreamPrevClose = dreamInProgress ? dreamInProgress.close : lastDreamCandle.close;
+          const dreamOpenPrice = parseFloat(dreamPrevClose.toFixed(2));
+          const dreamClosePrice = parseFloat((dreamOpenPrice + (dreamIsGreen ? dreamCandleBodySize : -dreamCandleBodySize)).toFixed(2));
+
+          // Add initial wicks to dream candle
+          const dreamWickSize = Math.abs(dreamClosePrice - dreamOpenPrice) * 0.4;
+          const dreamUpperWick = dreamIsGreen ? dreamWickSize * 0.3 : dreamWickSize * 0.7;
+          const dreamLowerWick = dreamIsGreen ? dreamWickSize * 0.7 : dreamWickSize * 0.3;
+
+          dreamInProgress = {
+            time: lastCandleTime,
+            open: dreamOpenPrice,
+            high: Math.max(dreamOpenPrice, dreamClosePrice) + dreamUpperWick,
+            low: Math.min(dreamOpenPrice, dreamClosePrice) - dreamLowerWick,
+            close: dreamClosePrice
+          };
+        }
+
+        realityMicroTrend = (Math.random() - 0.5) * 2;
+        dreamMicroTrend = (Math.random() - 0.5) * 2;
         tickCount = 0;
 
-        // Add the new candle to the chart
-        if (candleSeries.current) {
-          candleSeries.current.update({
-            time: inProgressCandle.time as any,
-            open: inProgressCandle.open,
-            high: inProgressCandle.high,
-            low: inProgressCandle.low,
-            close: inProgressCandle.close
+        // Update charts
+        if (realitySeries.current && realityInProgress) {
+          realitySeries.current.update({
+            time: realityInProgress.time as any,
+            open: realityInProgress.open,
+            high: realityInProgress.high,
+            low: realityInProgress.low,
+            close: realityInProgress.close
           });
         }
-      } else if (inProgressCandle) {
-        // Update the current in-progress candle with realistic movements
-        const priceMovement = tick + microTrend * 0.1;
-        const currentPrice = parseFloat((basePrice + priceMovement).toFixed(2));
 
-        // Update close price
-        inProgressCandle.close = currentPrice;
+        if (dreamSeries.current && dreamInProgress && isOverlayActive) {
+          dreamSeries.current.update({
+            time: dreamInProgress.time as any,
+            open: dreamInProgress.open,
+            high: dreamInProgress.high,
+            low: dreamInProgress.low,
+            close: dreamInProgress.close
+          });
+        }
+      } else {
+        // Update in-progress candles
+        if (realityInProgress) {
+          realityInProgress.close = parseFloat(realityNewPrice.toFixed(2));
+          realityInProgress.high = Math.max(realityInProgress.high, realityNewPrice);
+          realityInProgress.low = Math.min(realityInProgress.low, realityNewPrice);
 
-        // Update high/low with proportional wicking
-        const bodyRange = Math.abs(inProgressCandle.open - currentPrice);
-        const wickExtension = Math.min(bodyRange * 0.3, 2 + Math.random() * 2); // Max 30% of body or 2-4 points
-
-        if (currentPrice > inProgressCandle.open) {
-          // Price going up - extend high
-          inProgressCandle.high = Math.max(inProgressCandle.high, currentPrice + wickExtension * 0.3);
-          inProgressCandle.low = Math.min(inProgressCandle.low, inProgressCandle.open - wickExtension * 0.7);
-        } else {
-          // Price going down - extend low
-          inProgressCandle.high = Math.max(inProgressCandle.high, inProgressCandle.open + wickExtension * 0.7);
-          inProgressCandle.low = Math.min(inProgressCandle.low, currentPrice - wickExtension * 0.3);
+          if (realitySeries.current) {
+            realitySeries.current.update({
+              time: realityInProgress.time as any,
+              open: realityInProgress.open,
+              high: parseFloat(realityInProgress.high.toFixed(2)),
+              low: parseFloat(realityInProgress.low.toFixed(2)),
+              close: realityInProgress.close
+            });
+          }
         }
 
-        // Update chart with modified candle
-        if (candleSeries.current) {
-          candleSeries.current.update({
-            time: inProgressCandle.time as any,
-            open: inProgressCandle.open,
-            high: parseFloat(inProgressCandle.high.toFixed(2)),
-            low: parseFloat(inProgressCandle.low.toFixed(2)),
-            close: inProgressCandle.close
-          });
+        if (dreamInProgress && isOverlayActive) {
+          dreamInProgress.close = parseFloat(dreamNewPrice.toFixed(2));
+          dreamInProgress.high = Math.max(dreamInProgress.high, dreamNewPrice);
+          dreamInProgress.low = Math.min(dreamInProgress.low, dreamNewPrice);
+
+          if (dreamSeries.current) {
+            dreamSeries.current.update({
+              time: dreamInProgress.time as any,
+              open: dreamInProgress.open,
+              high: parseFloat(dreamInProgress.high.toFixed(2)),
+              low: parseFloat(dreamInProgress.low.toFixed(2)),
+              close: dreamInProgress.close
+            });
+          }
         }
       }
 
-      setCurrentPrice(parseFloat(newPrice.toFixed(2)));
+      setCurrentPrice(parseFloat(realityNewPrice.toFixed(2)));
+      if (isOverlayActive) {
+        setDreamPrice(parseFloat(dreamNewPrice.toFixed(2)));
+      }
     }, 100);
 
     return () => {
@@ -365,11 +474,35 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
         clearInterval(updateIntervalRef.current);
       }
     };
-  }, [isOverlayActive])
+  }, [isOverlayActive]);
 
   const toggleOverlay = () => {
     const newOverlayState = !isOverlayActive;
     setIsOverlayActive(newOverlayState);
+
+    if (dreamSeries.current) {
+      if (newOverlayState) {
+        // Show dream series and set its initial data
+        dreamSeries.current.applyOptions({ visible: true });
+
+        // Copy current reality data as starting point for dream
+        const currentRealityData = [...realityDataRef.current];
+        dreamDataRef.current = currentRealityData.map(d => ({...d}));
+
+        const dreamFormatted: CandlestickData[] = dreamDataRef.current.map(d => ({
+          time: d.time as any,
+          open: d.open,
+          high: d.high,
+          low: d.low,
+          close: d.close,
+        }));
+        dreamSeries.current.setData(dreamFormatted);
+        setDreamPrice(currentPrice);
+      } else {
+        // Hide dream series
+        dreamSeries.current.applyOptions({ visible: false });
+      }
+    }
 
     // Trigger overlay activation callback
     if (newOverlayState && onOverlayActivate) {
@@ -383,6 +516,32 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
         ref={chartContainerRef}
         style={{ width: '100%', height: '100%' }}
       />
+
+      {/* Legend showing both series when active */}
+      {isOverlayActive && (
+        <div style={{
+          position: 'absolute',
+          top: 60,
+          left: 20,
+          background: 'rgba(19, 23, 34, 0.95)',
+          border: '1px solid #2B2B43',
+          borderRadius: 8,
+          padding: 12,
+          fontSize: 12,
+          zIndex: 10
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ width: 12, height: 12, background: '#ef5350', borderRadius: 2, marginRight: 8 }}></div>
+            <span style={{ color: '#d1d4dc', marginRight: 16 }}>Reality (Bearish)</span>
+            <span style={{ color: '#ef5350' }}>${currentPrice.toFixed(2)}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ width: 12, height: 12, background: '#26a69a', borderRadius: 2, marginRight: 8 }}></div>
+            <span style={{ color: '#d1d4dc', marginRight: 16 }}>Dream (Bullish)</span>
+            <span style={{ color: '#26a69a' }}>${dreamPrice.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
 
       {/* Trading Interface Overlay */}
       <div style={{
@@ -412,17 +571,32 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
           <span>Entry:</span>
           <span>$52,000</span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span>Current:</span>
-          <span>${currentPrice.toFixed(2)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-          <span>P&L:</span>
-          <span style={{ color: currentPrice > 52000 ? '#26a69a' : '#ef5350' }}>
-            {currentPrice > 52000 ? '+' : ''}
-            ${((currentPrice - 52000) * 0.5).toFixed(2)}
-          </span>
-        </div>
+
+        {!isOverlayActive ? (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <span>P&L:</span>
+              <span style={{ color: '#ef5350' }}>
+                ${((currentPrice - 52000) * 0.5).toFixed(2)}
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span>Real P&L:</span>
+              <span style={{ color: '#ef5350', fontSize: 12 }}>
+                ${((currentPrice - 52000) * 0.5).toFixed(2)}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <span>Dream P&L:</span>
+              <span style={{ color: '#26a69a', fontSize: 12 }}>
+                +${((dreamPrice - 52000) * 0.5).toFixed(2)}
+              </span>
+            </div>
+          </>
+        )}
 
         <button
           onClick={toggleOverlay}
@@ -445,7 +619,7 @@ const TradingChart: React.FC<TradingChartProps> = ({ onChartReady, onOverlayActi
             e.currentTarget.style.opacity = '1';
           }}
         >
-          {isOverlayActive ? 'Show Real Chart' : 'Activate Dream Mode'}
+          {isOverlayActive ? 'Hide Dream Chart' : 'Show Dream Mode'}
         </button>
       </div>
     </div>
